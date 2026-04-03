@@ -528,18 +528,44 @@ footer { background:var(--green); text-align:center; padding:48px 24px; }
 
 <script>
 // ============================================================
-// CODES D'ACCÈS — ajoutez vos couples ici
-// "CODE": "Prénom & Prénom"
+// JSONBIN — stockage des codes en ligne
 // ============================================================
-const VALID_CODES = {
-  "DEMO2027":   "Sophie & Thomas",
-  "MARTIN2027": "Camille & Julien",
-  "DUPONT2026": "Marie & Paul",
-};
+const BIN_ID = "69cfd85836566621a8776d9b";
+const MASTER_KEY = "$2a$10$tugiz925/i8INWJjXpVc6.tBew/eAQg3Z18NiGAwJctv3DSRaZSV6";
+const BIN_URL = `https://api.jsonbin.io/v3/b/${BIN_ID}`;
 
+let VALID_CODES = {};
 let selectedFormula = null;
 let selectedMultiplier = 1.5;
 let extraDrink = false;
+
+// Charge les codes depuis JSONBin au démarrage
+async function loadCodes() {
+  try {
+    const res = await fetch(BIN_URL + '/latest', {
+      headers: { 'X-Master-Key': MASTER_KEY }
+    });
+    const data = await res.json();
+    VALID_CODES = data.record.codes || {};
+  } catch(e) {
+    console.error('Erreur chargement codes:', e);
+  }
+}
+
+// Sauvegarde les codes dans JSONBin
+async function saveCodes() {
+  try {
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+      body: JSON.stringify({ codes: VALID_CODES })
+    });
+  } catch(e) {
+    console.error('Erreur sauvegarde codes:', e);
+  }
+}
+
+loadCodes();
 
 const formulaData = {
   eclat:     { name: 'Éclat',     price: 8,  extra: 6 },
@@ -547,10 +573,16 @@ const formulaData = {
   prestige:  { name: 'Prestige',  price: 12, extra: 9 },
 };
 
-function checkCode() {
+async function checkCode() {
   const raw = document.getElementById('code-input').value.trim().toUpperCase();
   const errEl = document.getElementById('access-error');
   const inputEl = document.getElementById('code-input');
+  const btn = document.querySelector('.access-btn');
+  btn.textContent = 'Vérification...';
+  btn.disabled = true;
+  await loadCodes();
+  btn.textContent = 'Accéder à mon espace →';
+  btn.disabled = false;
   if (VALID_CODES[raw]) {
     const couple = VALID_CODES[raw];
     const screen = document.getElementById('access-screen');
@@ -756,16 +788,7 @@ setSliderBg(80);
 const ADMIN_PASSWORD = "cpc2027admin";
 let dynamicCodes = {};
 
-function loadDynamicCodes() {
-  try {
-    const stored = localStorage.getItem('cpc_codes');
-    if (stored) dynamicCodes = JSON.parse(stored);
-  } catch(e) {}
-}
 
-function saveDynamicCodes() {
-  try { localStorage.setItem('cpc_codes', JSON.stringify(dynamicCodes)); } catch(e) {}
-}
 
 function openAdmin() {
   const pwd = prompt("Mot de passe admin :");
@@ -779,7 +802,7 @@ function closeAdmin() {
   document.getElementById('admin-screen').classList.remove('visible');
 }
 
-function generateCode() {
+async function generateCode() {
   const name = document.getElementById('admin-name').value.trim();
   const year = document.getElementById('admin-year').value.trim() || new Date().getFullYear();
   if (!name) { alert("Merci de saisir le prénom des mariés."); return; }
@@ -789,9 +812,9 @@ function generateCode() {
   const rand = Math.floor(Math.random() * 900) + 100;
   const code = initials + year + rand;
 
-  // Ajoute aux codes valides
-  dynamicCodes[code] = name;
-  saveDynamicCodes();
+  // Ajoute aux codes valides et sauvegarde dans JSONBin
+  VALID_CODES[code] = name;
+  await saveCodes();
 
   // Affiche le résultat
   document.getElementById('admin-code-display').textContent = code;
@@ -827,9 +850,8 @@ function copyMsg() {
 }
 
 function renderCouplesList() {
-  const allCodes = { ...VALID_CODES, ...dynamicCodes };
   const el = document.getElementById('admin-couples-list');
-  const entries = Object.entries(allCodes);
+  const entries = Object.entries(VALID_CODES);
   if (entries.length === 0) { el.innerHTML = ''; return; }
   el.innerHTML = '<div class="admin-couples-title">Tous les codes actifs (' + entries.length + ')</div>' +
     entries.map(([code, name]) =>
@@ -843,33 +865,7 @@ window.addEventListener('hashchange', () => {
   if (window.location.hash === '#admin') openAdmin();
 });
 
-// Intègre les codes dynamiques dans la vérification
-const _origCheckCode = checkCode;
-function checkCode() {
-  loadDynamicCodes();
-  const raw = document.getElementById('code-input').value.trim().toUpperCase();
-  const allCodes = { ...VALID_CODES, ...dynamicCodes };
-  const errEl = document.getElementById('access-error');
-  const inputEl = document.getElementById('code-input');
-  if (allCodes[raw]) {
-    const couple = allCodes[raw];
-    const screen = document.getElementById('access-screen');
-    screen.style.opacity = '0';
-    screen.style.transition = 'opacity 0.6s ease';
-    screen.style.pointerEvents = 'none';
-    setTimeout(() => {
-      screen.style.display = 'none';
-      const app = document.getElementById('app');
-      app.style.display = 'block';
-      setTimeout(() => app.classList.add('fade-in'), 50);
-      document.getElementById('hero-couple').textContent = 'Bienvenue, ' + couple + ' 🥂';
-    }, 650);
-  } else {
-    inputEl.classList.add('error');
-    errEl.textContent = 'Code incorrect — vérifiez le code reçu.';
-    setTimeout(() => inputEl.classList.remove('error'), 400);
-  }
-}
+
 
 // STARS on Signature hover
 function spawnStars(card) {
