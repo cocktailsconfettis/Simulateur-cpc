@@ -565,7 +565,7 @@ async function saveCodes() {
   }
 }
 
-loadCodes();
+document.addEventListener('DOMContentLoaded', () => { loadCodes(); });
 
 const formulaData = {
   eclat:     { name: 'Éclat',     price: 8,  extra: 6 },
@@ -785,18 +785,32 @@ setSliderBg(80);
 // ============================================================
 // ADMIN — accès via #admin dans l'URL
 // ============================================================
-const ADMIN_PASSWORD = "cpc2027admin";
+const ADMIN_PASSWORD = "c&csimulateuradmin";
 let dynamicCodes = {};
 
 
 
 function openAdmin() {
-  const pwd = prompt("Mot de passe admin :");
-  if (pwd !== ADMIN_PASSWORD) { alert("Mot de passe incorrect."); return; }
-  loadDynamicCodes();
   document.getElementById('admin-screen').classList.add('visible');
-  renderCouplesList();
+  document.getElementById('admin-login').style.display = 'block';
+  document.getElementById('admin-content').style.display = 'none';
+  document.getElementById('admin-pwd').value = '';
+  document.getElementById('admin-login-error').textContent = '';
+  setTimeout(() => document.getElementById('admin-pwd').focus(), 300);
 }
+
+function loginAdmin() {
+  const pwd = document.getElementById('admin-pwd').value;
+  if (pwd === ADMIN_PASSWORD) {
+    document.getElementById('admin-login').style.display = 'none';
+    document.getElementById('admin-content').style.display = 'block';
+    renderCouplesList();
+  } else {
+    document.getElementById('admin-login-error').textContent = 'Mot de passe incorrect.';
+    document.getElementById('admin-pwd').value = '';
+  }
+}
+
 
 function closeAdmin() {
   document.getElementById('admin-screen').classList.remove('visible');
@@ -859,6 +873,13 @@ function renderCouplesList() {
     ).join('');
 }
 
+// Enter key for admin login
+// Admin pwd Enter key — wrapped safely
+const adminPwdEl = document.getElementById('admin-pwd');
+if (adminPwdEl) adminPwdEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') loginAdmin();
+});
+
 // Vérifie si on doit ouvrir l'admin
 if (window.location.hash === '#admin') openAdmin();
 window.addEventListener('hashchange', () => {
@@ -892,6 +913,18 @@ function spawnStars(card) {
   <div class="admin-box">
     <div class="admin-logo">Cocktails <span>&</span> Confettis</div>
     <div class="admin-badge">Espace administration</div>
+
+    <!-- LOGIN -->
+    <div id="admin-login" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);padding:32px;margin-bottom:24px">
+      <div class="admin-title">Accès sécurisé</div>
+      <div class="admin-sub">Entrez le mot de passe pour gérer les codes mariés.</div>
+      <input class="admin-input" id="admin-pwd" type="password" placeholder="Mot de passe">
+      <button class="admin-btn" onclick="loginAdmin()">Connexion →</button>
+      <div style="color:#F0A0A0;font-size:13px;margin-top:10px;font-style:italic;font-family:'Cormorant Garamond',serif" id="admin-login-error"></div>
+    </div>
+
+    <!-- CONTENT (hidden until logged in) -->
+    <div id="admin-content" style="display:none">
 
     <div class="admin-form">
       <div class="admin-title">Nouveau couple</div>
