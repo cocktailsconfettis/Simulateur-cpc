@@ -540,12 +540,34 @@ let selectedMultiplier = 1.5;
 let extraDrink = false;
 let currentCode = null;
 
-// Enregistre la connexion du couple
+// ============================================================
+// JSONBIN FUNCTIONS
+// ============================================================
+async function loadCodes() {
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    const data = await res.json();
+    VALID_CODES = data.record.codes || {};
+  } catch(e) { console.error('Erreur chargement codes:', e); }
+}
+
+async function saveCodes() {
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    const data = await res.json();
+    const record = data.record;
+    record.codes = VALID_CODES;
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+      body: JSON.stringify(record)
+    });
+  } catch(e) { console.error('Erreur sauvegarde codes:', e); }
+}
+
 async function trackConnection(code) {
   try {
-    const res = await fetch(BIN_URL + '/latest', {
-      headers: { 'X-Master-Key': MASTER_KEY }
-    });
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
     const data = await res.json();
     const record = data.record;
     if (!record.tracking) record.tracking = {};
@@ -559,12 +581,9 @@ async function trackConnection(code) {
   } catch(e) { console.error('Erreur tracking connexion:', e); }
 }
 
-// Enregistre la simulation du couple
 async function trackSimulation(code, simData) {
   try {
-    const res = await fetch(BIN_URL + '/latest', {
-      headers: { 'X-Master-Key': MASTER_KEY }
-    });
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
     const data = await res.json();
     const record = data.record;
     if (!record.tracking) record.tracking = {};
@@ -577,48 +596,6 @@ async function trackSimulation(code, simData) {
       body: JSON.stringify(record)
     });
   } catch(e) { console.error('Erreur tracking simulation:', e); }
-}
-
-// Charge les codes depuis JSONBin au démarrage
-let CONNECTION_LOGS = {};
-
-async function loadCodes() {
-  try {
-    const res = await fetch(BIN_URL + '/latest', {
-      headers: { 'X-Master-Key': MASTER_KEY }
-    });
-    const data = await res.json();
-    VALID_CODES = data.record.codes || {};
-    CONNECTION_LOGS = data.record.logs || {};
-  } catch(e) {
-    console.error('Erreur chargement codes:', e);
-  }
-}
-
-// Sauvegarde les codes dans JSONBin
-async function saveCodes() {
-  try {
-    await fetch(BIN_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
-      body: JSON.stringify({ codes: VALID_CODES, logs: CONNECTION_LOGS })
-    });
-  } catch(e) {
-    console.error('Erreur sauvegarde codes:', e);
-  }
-}
-
-// Enregistre la connexion d'un couple
-async function logConnection(code) {
-  try {
-    await loadCodes();
-    const now = new Date();
-    const formatted = now.toLocaleDateString('fr-FR') + ' à ' + now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
-    CONNECTION_LOGS[code] = formatted;
-    await saveCodes();
-  } catch(e) {
-    console.error('Erreur log connexion:', e);
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => { loadCodes(); });
