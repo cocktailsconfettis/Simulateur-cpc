@@ -221,7 +221,7 @@ footer { background:var(--green); text-align:center; padding:48px 24px; }
 .admin-copy-btn:hover { background:rgba(255,255,255,.1); color:var(--white); }
 .admin-couples-list { margin-top:28px; }
 .admin-couples-title { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.5); margin-bottom:14px; font-weight:500; }
-.admin-couple-item { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); margin-bottom:8px; }
+.admin-couple-item { display:flex; flex-direction:column; align-items:flex-start; padding:12px 16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); margin-bottom:8px; gap:6px; }
 .admin-couple-name { font-size:14px; color:var(--white); font-weight:500; }
 .admin-couple-code { font-size:13px; color:var(--gold-light); letter-spacing:3px; font-family:'Playfair Display',serif; }
 .admin-close { position:fixed; top:20px; right:24px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:var(--white); font-size:20px; width:40px; height:40px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2001; }
@@ -251,7 +251,7 @@ footer { background:var(--green); text-align:center; padding:48px 24px; }
 .admin-copy-btn:hover { background:rgba(255,255,255,.1); color:var(--white); }
 .admin-couples-list { margin-top:28px; }
 .admin-couples-title { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.5); margin-bottom:14px; font-weight:500; }
-.admin-couple-item { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); margin-bottom:8px; }
+.admin-couple-item { display:flex; flex-direction:column; align-items:flex-start; padding:12px 16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); margin-bottom:8px; gap:6px; }
 .admin-couple-name { font-size:14px; color:var(--white); font-weight:500; }
 .admin-couple-code { font-size:13px; color:var(--gold-light); letter-spacing:3px; font-family:'Playfair Display',serif; }
 .admin-close { position:fixed; top:20px; right:24px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:var(--white); font-size:20px; width:40px; height:40px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2001; }
@@ -1064,13 +1064,13 @@ async function renderCouplesList() {
       const sim = t.lastSimulation
         ? `<div style="font-size:12px;color:var(--gold-light);margin-top:3px">📊 ${t.lastSimulation.formule} · ${t.lastSimulation.invites} invités · ${t.lastSimulation.consommation} · <strong>${t.lastSimulation.total}</strong><br><span style="opacity:.6;font-size:11px">${t.lastSimDate}</span></div>`
         : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:3px">Aucune simulation effectuée</div>`;
-      return `<div class="admin-couple-item" style="flex-direction:column;align-items:flex-start;gap:2px;padding:16px">
-        <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+      return `<div class="admin-couple-item" style="flex-direction:column;align-items:flex-start;gap:6px;padding:16px">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:flex-start">
           <div>
-            <span class="admin-couple-name">${name}</span>
-            <span class="admin-couple-code" style="margin-left:12px">${code}</span>
+            <span class="admin-couple-name">${name}</span><br>
+            <span class="admin-couple-code">${code}</span>
           </div>
-          <button onclick="deleteCouple('${code}', '${name}')" style="background:rgba(200,80,80,.2);border:1px solid rgba(200,80,80,.4);color:#F0A0A0;font-size:11px;padding:5px 12px;cursor:pointer;font-family:'Jost',sans-serif;letter-spacing:1px;flex-shrink:0">🗑 Supprimer</button>
+          <button onclick="deleteCouple('${code}', '${name}')" style="background:rgba(200,80,80,.25);border:1px solid rgba(200,80,80,.5);color:#F0A0A0;font-size:12px;padding:8px 14px;cursor:pointer;font-family:'Jost',sans-serif;font-weight:500;flex-shrink:0;margin-left:10px">🗑</button>
         </div>
         ${connexion}${sim}
       </div>`;
