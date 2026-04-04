@@ -538,8 +538,50 @@ let VALID_CODES = {};
 let selectedFormula = null;
 let selectedMultiplier = 1.5;
 let extraDrink = false;
+let currentCode = null;
+
+// Enregistre la connexion du couple
+async function trackConnection(code) {
+  try {
+    const res = await fetch(BIN_URL + '/latest', {
+      headers: { 'X-Master-Key': MASTER_KEY }
+    });
+    const data = await res.json();
+    const record = data.record;
+    if (!record.tracking) record.tracking = {};
+    if (!record.tracking[code]) record.tracking[code] = {};
+    record.tracking[code].lastConnection = new Date().toLocaleString('fr-FR');
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+      body: JSON.stringify(record)
+    });
+  } catch(e) { console.error('Erreur tracking connexion:', e); }
+}
+
+// Enregistre la simulation du couple
+async function trackSimulation(code, simData) {
+  try {
+    const res = await fetch(BIN_URL + '/latest', {
+      headers: { 'X-Master-Key': MASTER_KEY }
+    });
+    const data = await res.json();
+    const record = data.record;
+    if (!record.tracking) record.tracking = {};
+    if (!record.tracking[code]) record.tracking[code] = {};
+    record.tracking[code].lastSimulation = simData;
+    record.tracking[code].lastSimDate = new Date().toLocaleString('fr-FR');
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+      body: JSON.stringify(record)
+    });
+  } catch(e) { console.error('Erreur tracking simulation:', e); }
+}
 
 // Charge les codes depuis JSONBin au démarrage
+let CONNECTION_LOGS = {};
+
 async function loadCodes() {
   try {
     const res = await fetch(BIN_URL + '/latest', {
@@ -547,6 +589,7 @@ async function loadCodes() {
     });
     const data = await res.json();
     VALID_CODES = data.record.codes || {};
+    CONNECTION_LOGS = data.record.logs || {};
   } catch(e) {
     console.error('Erreur chargement codes:', e);
   }
@@ -558,10 +601,23 @@ async function saveCodes() {
     await fetch(BIN_URL, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
-      body: JSON.stringify({ codes: VALID_CODES })
+      body: JSON.stringify({ codes: VALID_CODES, logs: CONNECTION_LOGS })
     });
   } catch(e) {
     console.error('Erreur sauvegarde codes:', e);
+  }
+}
+
+// Enregistre la connexion d'un couple
+async function logConnection(code) {
+  try {
+    await loadCodes();
+    const now = new Date();
+    const formatted = now.toLocaleDateString('fr-FR') + ' à ' + now.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+    CONNECTION_LOGS[code] = formatted;
+    await saveCodes();
+  } catch(e) {
+    console.error('Erreur log connexion:', e);
   }
 }
 
@@ -585,6 +641,8 @@ async function checkCode() {
   btn.disabled = false;
   if (VALID_CODES[raw]) {
     const couple = VALID_CODES[raw];
+    currentCode = raw;
+    trackConnection(raw);
     const screen = document.getElementById('access-screen');
     screen.style.opacity = '0';
     screen.style.transition = 'opacity 0.6s ease';
@@ -696,6 +754,17 @@ function updateCalc() {
   const multLbl = selectedMultiplier === 1 ? '× 1' : selectedMultiplier === 1.5 ? '× 1,5 (recommandé)' : '× 2';
   const minNote = minApplied ? `<div class="pb-line" style="border:none;padding-top:0;font-size:12px;color:var(--gold)"><span>⚠ Minimum de 40 verres appliqué</span></div>` : '';
 
+  // Sauvegarde la simulation si connecté
+  if (currentCode) {
+    const multLabels2 = {1:'1 verre/invité', 1.5:'1,5 verre/invité', 2:'2 verres/invité'};
+    trackSimulation(currentCode, {
+      formule: f.name,
+      invites: guests,
+      consommation: multLabels2[selectedMultiplier],
+      total: fmt(total)
+    });
+  }
+
   document.getElementById('price-result').innerHTML = `
     <div class="price-breakdown">
       <div class="pb-title">Détail de l'estimation</div>
@@ -804,7 +873,7 @@ function loginAdmin() {
   if (pwd === ADMIN_PASSWORD) {
     document.getElementById('admin-login').style.display = 'none';
     document.getElementById('admin-content').style.display = 'block';
-    renderCouplesList();
+    loadCodes().then(() => renderCouplesList());
   } else {
     document.getElementById('admin-login-error').textContent = 'Mot de passe incorrect.';
     document.getElementById('admin-pwd').value = '';
@@ -863,14 +932,35 @@ function copyMsg() {
   });
 }
 
-function renderCouplesList() {
+async function renderCouplesList() {
   const el = document.getElementById('admin-couples-list');
   const entries = Object.entries(VALID_CODES);
   if (entries.length === 0) { el.innerHTML = ''; return; }
-  el.innerHTML = '<div class="admin-couples-title">Tous les codes actifs (' + entries.length + ')</div>' +
-    entries.map(([code, name]) =>
-      `<div class="admin-couple-item"><span class="admin-couple-name">${name}</span><span class="admin-couple-code">${code}</span></div>`
-    ).join('');
+
+  let tracking = {};
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    const data = await res.json();
+    tracking = data.record.tracking || {};
+  } catch(e) {}
+
+  el.innerHTML = '<div class="admin-couples-title">Codes actifs (' + entries.length + ')</div>' +
+    entries.map(([code, name]) => {
+      const t = tracking[code] || {};
+      const connexion = t.lastConnection
+        ? `<div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">🟢 Connecté le ${t.lastConnection}</div>`
+        : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:4px">⚪ Jamais connecté</div>`;
+      const sim = t.lastSimulation
+        ? `<div style="font-size:12px;color:var(--gold-light);margin-top:3px">📊 ${t.lastSimulation.formule} · ${t.lastSimulation.invites} invités · ${t.lastSimulation.consommation} · <strong>${t.lastSimulation.total}</strong><br><span style="opacity:.6;font-size:11px">${t.lastSimDate}</span></div>`
+        : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:3px">Aucune simulation effectuée</div>`;
+      return `<div class="admin-couple-item" style="flex-direction:column;align-items:flex-start;gap:2px;padding:16px">
+        <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
+          <span class="admin-couple-name">${name}</span>
+          <span class="admin-couple-code">${code}</span>
+        </div>
+        ${connexion}${sim}
+      </div>`;
+    }).join('');
 }
 
 // Enter key for admin login
