@@ -275,9 +275,34 @@ footer { background:var(--green); text-align:center; padding:48px 24px; }
 .carousel-dots { display: flex; gap: 10px; }
 .carousel-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.3); cursor: pointer; transition: background .3s; border: none; }
 .carousel-dot.active { background: var(--gold-light); }
+
+/* OFFLINE / ERROR */
+#offline-banner { display:none; position:fixed; top:0; left:0; right:0; z-index:9999; background:#8B3A3A; color:white; text-align:center; padding:10px 20px; font-size:13px; font-family:'Jost',sans-serif; font-weight:500; }
+#offline-banner.show { display:block; }
+
+/* STATS */
+.stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:24px; }
+.stat-card { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); padding:18px; text-align:center; }
+.stat-value { font-family:'Playfair Display',serif; font-size:28px; color:var(--gold-light); font-weight:600; }
+.stat-label { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.5); margin-top:4px; }
+.stat-bar-wrap { margin-top:16px; }
+.stat-bar-label { display:flex; justify-content:space-between; font-size:11px; color:rgba(255,255,255,.6); margin-bottom:4px; }
+.stat-bar { height:6px; background:rgba(255,255,255,.1); border-radius:3px; margin-bottom:8px; }
+.stat-bar-fill { height:100%; border-radius:3px; background:var(--gold-light); transition:width .5s ease; }
+
+/* ADMIN MOBILE */
+@media(max-width:600px) {
+  .admin-box { max-width:100%; }
+  #admin-screen { padding:20px 12px; }
+  .admin-form { padding:20px; }
+  .stats-grid { grid-template-columns:1fr; }
+  .admin-couple-item { padding:12px !important; }
+}
 </style>
 </head>
 <body>
+
+<div id="offline-banner">⚠ Pas de connexion internet — certaines fonctionnalités peuvent être indisponibles</div>
 
 <!-- ACCESS -->
 <div id="access-screen">
@@ -543,12 +568,29 @@ let currentCode = null;
 // ============================================================
 // JSONBIN FUNCTIONS
 // ============================================================
+
+// Codes de secours intégrés (utilisés si JSONBin est inaccessible)
+const FALLBACK_CODES = {
+  "DEMO2027": "Sophie & Thomas",
+  "MARTIN2027": "Camille & Julien",
+  "OEJ2027142": "Oriane & Jérôme",
+  "J2027973": "Julie 🥂"
+};
+
 async function loadCodes() {
+  // Charge les codes de secours d'abord
+  VALID_CODES = { ...FALLBACK_CODES };
+  window.EXPIRY_DATES = {};
   try {
     const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    if (!res.ok) throw new Error('Erreur réseau');
     const data = await res.json();
-    VALID_CODES = data.record.codes || {};
-  } catch(e) { console.error('Erreur chargement codes:', e); }
+    // Fusionne JSONBin avec les codes de secours
+    VALID_CODES = { ...FALLBACK_CODES, ...(data.record.codes || {}) };
+    window.EXPIRY_DATES = data.record.expiry || {};
+  } catch(e) {
+    console.warn('JSONBin inaccessible — codes de secours utilisés');
+  }
 }
 
 async function saveCodes() {
@@ -565,12 +607,44 @@ async function saveCodes() {
   } catch(e) { console.error('Erreur sauvegarde codes:', e); }
 }
 
-async function trackConnection(code) {
+async function saveCodesWithExpiry() {
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    const data = await res.json();
+    const record = data.record;
+    record.codes = VALID_CODES;
+    if (window.EXPIRY_DATES) record.expiry = window.EXPIRY_DATES;
+    await fetch(BIN_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
+      body: JSON.stringify(record)
+    });
+  } catch(e) { console.error('Erreur sauvegarde:', e); }
+}
+
+
+// Sauvegarde locale de secours (téléchargement JSON)
+function backupData() {
+  fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } })
+    .then(r => r.json())
+    .then(data => {
+      const blob = new Blob([JSON.stringify(data.record, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sauvegarde_cpc_' + new Date().toLocaleDateString('fr-FR').replace(/\//g,'-') + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+}
+
+async function trackConnection(code, coupleName) {
   try {
     const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
     const data = await res.json();
     const record = data.record;
     if (!record.tracking) record.tracking = {};
+    const isFirstConnection = !record.tracking[code] || !record.tracking[code].lastConnection;
     if (!record.tracking[code]) record.tracking[code] = {};
     record.tracking[code].lastConnection = new Date().toLocaleString('fr-FR');
     await fetch(BIN_URL, {
@@ -578,6 +652,20 @@ async function trackConnection(code) {
       headers: { 'Content-Type': 'application/json', 'X-Master-Key': MASTER_KEY },
       body: JSON.stringify(record)
     });
+    // Email auto à la première connexion
+    if (isFirstConnection && coupleName) {
+      fetch('https://formspree.io/f/xdapdyle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          _subject: '🥂 Nouveau couple connecté — ' + coupleName,
+          couple: coupleName,
+          code: code,
+          date: new Date().toLocaleString('fr-FR'),
+          message: coupleName + ' vient de se connecter au simulateur pour la première fois !'
+        })
+      });
+    }
   } catch(e) { console.error('Erreur tracking connexion:', e); }
 }
 
@@ -617,9 +705,21 @@ async function checkCode() {
   btn.textContent = 'Accéder à mon espace →';
   btn.disabled = false;
   if (VALID_CODES[raw]) {
+    // Vérifier expiration
+    const expDates = window.EXPIRY_DATES || {};
+    if (expDates[raw]) {
+      const expDate = new Date(expDates[raw]);
+      expDate.setDate(expDate.getDate() + 1);
+      if (new Date() > expDate) {
+        inputEl.classList.add('error');
+        errEl.textContent = 'Ce code a expiré — contactez-nous pour renouveler.';
+        setTimeout(() => inputEl.classList.remove('error'), 400);
+        return;
+      }
+    }
     const couple = VALID_CODES[raw];
     currentCode = raw;
-    trackConnection(raw);
+    trackConnection(raw, couple);
     const screen = document.getElementById('access-screen');
     screen.style.opacity = '0';
     screen.style.transition = 'opacity 0.6s ease';
@@ -894,9 +994,12 @@ async function generateCode() {
   const rand = Math.floor(Math.random() * 900) + 100;
   const code = initials + year + rand;
 
-  // Ajoute aux codes valides et sauvegarde dans JSONBin
+  // Ajoute aux codes valides avec date d'expiration
+  const expiry = document.getElementById('admin-expiry').value;
   VALID_CODES[code] = name;
-  await saveCodes();
+  if (!window.EXPIRY_DATES) window.EXPIRY_DATES = {};
+  if (expiry) window.EXPIRY_DATES[code] = expiry;
+  await saveCodesWithExpiry();
 
   // Affiche le résultat
   document.getElementById('admin-code-display').textContent = code;
@@ -931,6 +1034,13 @@ function copyMsg() {
   });
 }
 
+async function deleteCouple(code, name) {
+  if (!confirm(`Supprimer l'accès de ${name} (${code}) ?`)) return;
+  delete VALID_CODES[code];
+  await saveCodes();
+  renderCouplesList();
+}
+
 async function renderCouplesList() {
   const el = document.getElementById('admin-couples-list');
   const entries = Object.entries(VALID_CODES);
@@ -946,16 +1056,21 @@ async function renderCouplesList() {
   el.innerHTML = '<div class="admin-couples-title">Codes actifs (' + entries.length + ')</div>' +
     entries.map(([code, name]) => {
       const t = tracking[code] || {};
+      const expiry = (window.EXPIRY_DATES || {})[code];
+      const expiryStr = expiry ? ` · 📅 Expire le ${new Date(expiry).toLocaleDateString('fr-FR')}` : '';
       const connexion = t.lastConnection
-        ? `<div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">🟢 Connecté le ${t.lastConnection}</div>`
-        : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:4px">⚪ Jamais connecté</div>`;
+        ? `<div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:4px">🟢 Connecté le ${t.lastConnection}${expiryStr}</div>`
+        : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:4px">⚪ Jamais connecté${expiryStr}</div>`;
       const sim = t.lastSimulation
         ? `<div style="font-size:12px;color:var(--gold-light);margin-top:3px">📊 ${t.lastSimulation.formule} · ${t.lastSimulation.invites} invités · ${t.lastSimulation.consommation} · <strong>${t.lastSimulation.total}</strong><br><span style="opacity:.6;font-size:11px">${t.lastSimDate}</span></div>`
         : `<div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:3px">Aucune simulation effectuée</div>`;
       return `<div class="admin-couple-item" style="flex-direction:column;align-items:flex-start;gap:2px;padding:16px">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-          <span class="admin-couple-name">${name}</span>
-          <span class="admin-couple-code">${code}</span>
+          <div>
+            <span class="admin-couple-name">${name}</span>
+            <span class="admin-couple-code" style="margin-left:12px">${code}</span>
+          </div>
+          <button onclick="deleteCouple('${code}', '${name}')" style="background:rgba(200,80,80,.2);border:1px solid rgba(200,80,80,.4);color:#F0A0A0;font-size:11px;padding:5px 12px;cursor:pointer;font-family:'Jost',sans-serif;letter-spacing:1px;flex-shrink:0">🗑 Supprimer</button>
         </div>
         ${connexion}${sim}
       </div>`;
@@ -994,6 +1109,94 @@ function spawnStars(card) {
     }, i * 60);
   }
 }
+
+// ============================================================
+// OFFLINE DETECTION
+// ============================================================
+function updateOnlineStatus() {
+  const banner = document.getElementById('offline-banner');
+  if (!navigator.onLine) {
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+
+// ============================================================
+// STATS
+// ============================================================
+async function renderStats() {
+  const el = document.getElementById('admin-stats');
+  if (!el) return;
+
+  let tracking = {};
+  try {
+    const res = await fetch(BIN_URL + '/latest', { headers: { 'X-Master-Key': MASTER_KEY } });
+    const data = await res.json();
+    tracking = data.record.tracking || {};
+  } catch(e) { return; }
+
+  const total = Object.keys(VALID_CODES).length;
+  const connected = Object.values(tracking).filter(t => t.lastConnection).length;
+  const simulated = Object.values(tracking).filter(t => t.lastSimulation).length;
+
+  // Formule la plus demandée
+  const formulaCounts = {};
+  Object.values(tracking).forEach(t => {
+    if (t.lastSimulation && t.lastSimulation.formule) {
+      const f = t.lastSimulation.formule;
+      formulaCounts[f] = (formulaCounts[f] || 0) + 1;
+    }
+  });
+
+  // Budget moyen
+  let totalBudget = 0, budgetCount = 0;
+  Object.values(tracking).forEach(t => {
+    if (t.lastSimulation && t.lastSimulation.total) {
+      const val = parseInt(t.lastSimulation.total.replace(/[^0-9]/g, ''));
+      if (!isNaN(val)) { totalBudget += val; budgetCount++; }
+    }
+  });
+  const avgBudget = budgetCount > 0 ? Math.round(totalBudget / budgetCount) : 0;
+
+  // Formule bars
+  const formules = ['Éclat', 'Signature', 'Prestige'];
+  const maxCount = Math.max(...formules.map(f => formulaCounts[f] || 0), 1);
+  const barsHtml = formules.map(f => {
+    const count = formulaCounts[f] || 0;
+    const pct = Math.round((count / maxCount) * 100);
+    return `<div class="stat-bar-label"><span>${f}</span><span>${count}</span></div>
+    <div class="stat-bar"><div class="stat-bar-fill" style="width:${pct}%"></div></div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="admin-couples-title">Statistiques</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">${total}</div>
+        <div class="stat-label">Codes créés</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${connected}</div>
+        <div class="stat-label">Couples connectés</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${simulated}</div>
+        <div class="stat-label">Simulations faites</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">${avgBudget > 0 ? avgBudget.toLocaleString('fr-FR') + '€' : '—'}</div>
+        <div class="stat-label">Budget moyen</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);padding:18px">
+      <div class="admin-couples-title" style="margin-bottom:12px">Formules simulées</div>
+      ${barsHtml}
+    </div>`;
+}
 </script>
 
 <!-- ADMIN SCREEN -->
@@ -1014,6 +1217,9 @@ function spawnStars(card) {
 
     <!-- CONTENT (hidden until logged in) -->
     <div id="admin-content" style="display:none">
+      <div style="text-align:right;margin-bottom:16px">
+        <button onclick="backupData()" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);font-family:'Jost',sans-serif;font-size:11px;letter-spacing:2px;padding:8px 16px;cursor:pointer;text-transform:uppercase">⬇ Sauvegarder</button>
+      </div>
 
     <div class="admin-form">
       <div class="admin-title">Nouveau couple</div>
@@ -1024,6 +1230,9 @@ function spawnStars(card) {
 
       <label class="admin-label">Année du mariage</label>
       <input class="admin-input" id="admin-year" type="text" placeholder="ex : 2027" maxlength="4">
+
+      <label class="admin-label">Date du mariage (expiration automatique)</label>
+      <input class="admin-input" id="admin-expiry" type="date">
 
       <button class="admin-btn" onclick="generateCode()">Générer le code & le message →</button>
 
@@ -1036,6 +1245,7 @@ function spawnStars(card) {
       </div>
     </div>
 
+    <div class="admin-stats" id="admin-stats" style="margin-bottom:24px"></div>
     <div class="admin-couples-list" id="admin-couples-list"></div>
   </div>
 </div>
